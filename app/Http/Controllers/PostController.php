@@ -20,7 +20,7 @@ class PostController extends Controller
 
     public function show(Post $post)
     {
-        if ($post->is_draft || ! $post->published_at || $post->published_at > now()) {
+        if (is_null($post->published_at) || $post->published_at->isFuture()) {
             abort(404);
         }
 
