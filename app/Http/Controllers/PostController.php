@@ -2,29 +2,33 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StorePostRequest;
+use App\Http\Requests\UpdatePostRequest;
+use App\Http\Resources\PostResource;
 use App\Models\Post;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Foundation\Validation\ValidatesRequests;
 
 class PostController extends Controller
 {
+    use AuthorizesRequests, ValidatesRequests;
+
     public function index()
     {
-        $posts = Post::with('user')
-            ->whereNotNull('published_at')
-            ->where('published_at', '<=', now())
+        $posts = Post::active()
+            ->with('user')
             ->paginate(20);
 
-        return response()->json($posts);
+        return PostResource::collection($posts);
     }
 
     public function show(Post $post)
     {
-        if (is_null($post->published_at) || $post->published_at->isFuture()) {
+        if (! $post->is_active) {
             abort(404);
         }
 
-        return response()->json($post->load('user'));
+        return new PostResource($post->load('user'));
     }
 
     public function create()
@@ -32,42 +36,34 @@ class PostController extends Controller
         return 'posts.create';
     }
 
-    public function store(Request $request)
+    public function store(StorePostRequest $request)
     {
-        $data = $request->validate([
-            'title' => 'required',
-            'content' => 'required',
-        ]);
+        $post = $request->user()->posts()->create($request->validated());
 
-        $post = Auth::user()->posts()->create($data);
-
-        return response()->json($post, 201);
+        return new PostResource($post);
     }
 
     public function edit(Post $post)
     {
-        abort_if($post->user_id !== Auth::id(), 403);
+        $this->authorize('update', $post);
 
-        return 'posts.edit';
+        $post->delete();
+
+        return response()->json(['message' => 'Deleted']);
     }
 
-    public function update(Request $request, Post $post)
+    public function update(UpdatePostRequest $request, Post $post)
     {
-        abort_if($post->user_id !== Auth::id(), 403);
+        $this->authorize('update', $post);
 
-        $data = $request->validate([
-            'title' => 'required',
-            'content' => 'required',
-        ]);
+        $post->update($request->validated());
 
-        $post->update($data);
-
-        return response()->json($post);
+        return new PostResource($post);
     }
 
     public function destroy(Post $post)
     {
-        abort_if($post->user_id !== Auth::id(), 403);
+        $this->authorize('delete', $post);
 
         $post->delete();
 
